@@ -1388,6 +1388,8 @@ add_library(
   src/library/autodj/autodjprocessor.cpp
   src/library/autodj/dlgautodj.cpp
   src/library/autodj/dlgautodj.ui
+  src/library/autodj/smartautodjmatcher.cpp
+  src/library/autodj/smartautodjtransition.cpp
   src/library/banshee/bansheedbconnection.cpp
   src/library/banshee/bansheefeature.cpp
   src/library/banshee/bansheeplaylistmodel.cpp
@@ -2879,6 +2881,7 @@ if(BUILD_TESTING)
     src/test/analyzersilence_test.cpp
     src/test/audiotaperpot_test.cpp
     src/test/autodjprocessor_test.cpp
+    src/test/smartautodj_test.cpp
     src/test/beatgridtest.cpp
     src/test/beatmaptest.cpp
     src/test/beatstest.cpp

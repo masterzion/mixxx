@@ -1,4 +1,6 @@
 #include "library/autodj/autodjprocessor.h"
+#include "library/autodj/smartautodjmatcher.h"
+#include "library/autodj/smartautodjtransition.h"
 
 #include "engine/channels/enginedeck.h"
 #include "mixer/basetrackplayer.h"
@@ -41,6 +43,9 @@ DeckAttributes::DeckAttributes(int index,
           m_trackSamples(group, "track_samples"),
           m_sampleRate(group, "track_samplerate"),
           m_rateRatio(group, "rate_ratio"),
+          m_eqLow(QStringLiteral("[EqualizerRack1_%1_Effect1]").arg(group), "parameter1"),
+          m_eqMid(QStringLiteral("[EqualizerRack1_%1_Effect1]").arg(group), "parameter2"),
+          m_eqHigh(QStringLiteral("[EqualizerRack1_%1_Effect1]").arg(group), "parameter3"),
           m_pPlayer(pPlayer) {
     connect(m_pPlayer, &BaseTrackPlayer::newTrackLoaded,
             this, &DeckAttributes::slotTrackLoaded);
@@ -866,36 +871,38 @@ void AutoDJProcessor::playerPositionChanged(DeckAttributes* pAttributes,
 
         if (currentCrossfader == crossfaderTarget) {
             // We are done, the fading (from) track is silenced.
-            // We don't handle mode switches here since that's handled by
-            // the next playerPositionChanged call otherDeck (see the
-            // P1/P2FADING case above).
             thisDeck->stop();
+            thisDeck->resetEQ();
+            otherDeck->resetEQ();
             m_transitionProgress = 1.0;
-            // Note: If the user has stopped the toDeck during the transition.
-            // this deck just stops as well. In this case a stopped AutoDJ is accepted
-            // because the use did it intentionally
         } else {
             // We are in Fading state.
-            // Calculate the current transitionProgress, the place between begin
-            // and end position and the step we have taken since the last call
             double transitionProgress = (thisPlayPosition - thisDeck->fadeBeginPos) /
                     (thisDeck->fadeEndPos - thisDeck->fadeBeginPos);
             double transitionStep = transitionProgress - m_transitionProgress;
             if (transitionStep > 0.0) {
-                // We have made progress.
-                // Backward seeks pause the transitions; forward seeks speed up
-                // the transitions. If there has been a seek beyond endPos, end
-                // the transition immediately.
-                double remainingCrossfader = crossfaderTarget - currentCrossfader;
-                double adjustment = remainingCrossfader /
-                        (1.0 - m_transitionProgress) * transitionStep;
-                // we move the crossfader linearly with
-                // movements in this track's play position.
-                setCrossfader(currentCrossfader + adjustment);
+                if (m_transitionMode == TransitionMode::SmartPhraseAndEQ) {
+                    bool fromLeftToRight = thisDeck->isLeft();
+                    auto transState = SmartAutoDJTransition::calculateTransitionState(
+                            transitionProgress,
+                            fromLeftToRight,
+                            SmartAutoDJTransition::CrossfadeCurve::EqualPower,
+                            true);
+                    setCrossfader(transState.crossfaderPosition);
+                    thisDeck->setEQ(transState.fromDeckEQ.low,
+                            transState.fromDeckEQ.mid,
+                            transState.fromDeckEQ.high);
+                    otherDeck->setEQ(transState.toDeckEQ.low,
+                            transState.toDeckEQ.mid,
+                            transState.toDeckEQ.high);
+                } else {
+                    double remainingCrossfader = crossfaderTarget - currentCrossfader;
+                    double adjustment = remainingCrossfader /
+                            (1.0 - m_transitionProgress) * transitionStep;
+                    setCrossfader(currentCrossfader + adjustment);
+                }
             }
             m_transitionProgress = transitionProgress;
-            // if we are at 1.0 here, we need an additional callback until the last
-            // step is processed and we can stop the deck.
         }
     }
 }
@@ -1376,6 +1383,34 @@ void AutoDJProcessor::calculateTransition(DeckAttributes* pFromDeck,
 
     m_crossfaderStartCenter = false;
     switch (m_transitionMode) {
+    case TransitionMode::SmartPhraseAndEQ: {
+        TrackPointer pFromTrack = pFromDeck->getLoadedTrack();
+        TrackPointer pToTrack = pToDeck->getLoadedTrack();
+
+        double outroStart = getOutroStartSecond(pFromDeck);
+        double outroEnd = getOutroEndSecond(pFromDeck);
+        double introStart = getIntroStartSecond(pToDeck);
+
+        if (outroEnd <= 0.0 || outroStart == outroEnd) {
+            outroEnd = fromDeckEndPosition;
+            double fromBpm = pFromTrack ? pFromTrack->getBpm() : 120.0;
+            mixxx::BeatsPointer pBeats = pFromTrack ? pFromTrack->getBeats() : nullptr;
+            double phraseLength = (60.0 / std::max(20.0, fromBpm)) * 4.0 * 16.0;
+            outroStart = std::max(0.0, outroEnd - phraseLength);
+            outroStart = SmartAutoDJTransition::findNearestPhraseBoundary(
+                    pBeats, outroStart, 16, fromBpm);
+        }
+
+        double transitionLength = outroEnd - outroStart;
+        if (transitionLength <= 0.0) {
+            transitionLength = std::fabs(m_transitionTime);
+            outroStart = std::max(0.0, outroEnd - transitionLength);
+        }
+
+        pFromDeck->fadeBeginPos = outroStart;
+        pFromDeck->fadeEndPos = outroEnd;
+        pToDeck->startPos = (introStart > 0.0) ? introStart : 0.0;
+    } break;
     case TransitionMode::FullIntroOutro: {
         // Use the outro or intro length for the transition time, whichever is
         // shorter. Let the full outro and intro play; do not cut off any part

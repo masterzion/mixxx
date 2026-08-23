@@ -174,6 +174,8 @@ DlgAutoDJ::DlgAutoDJ(WLibrary* parent,
             this,
             &DlgAutoDJ::transitionSliderChanged);
 
+    fadeModeCombobox->addItem(tr("Smart DJ (Phrase & EQ)"),
+            static_cast<int>(AutoDJProcessor::TransitionMode::SmartPhraseAndEQ));
     fadeModeCombobox->addItem(tr("Full Intro + Outro"),
             static_cast<int>(AutoDJProcessor::TransitionMode::FullIntroOutro));
     fadeModeCombobox->addItem(tr("Fade At Outro Start"),

@@ -92,6 +92,18 @@ class DeckAttributes : public QObject {
         return m_rateRatio.get();
     }
 
+    void setEQ(double low, double mid, double high) {
+        m_eqLow.set(low);
+        m_eqMid.set(mid);
+        m_eqHigh.set(high);
+    }
+
+    void resetEQ() {
+        m_eqLow.set(1.0);
+        m_eqMid.set(1.0);
+        m_eqHigh.set(1.0);
+    }
+
     TrackPointer getLoadedTrack() const;
 
   signals:
@@ -141,6 +153,9 @@ class DeckAttributes : public QObject {
     ControlProxy m_trackSamples;
     ControlProxy m_sampleRate;
     ControlProxy m_rateRatio;
+    ControlProxy m_eqLow;
+    ControlProxy m_eqMid;
+    ControlProxy m_eqHigh;
     BaseTrackPlayer* m_pPlayer;
 };
 
@@ -170,7 +185,8 @@ class AutoDJProcessor : public QObject {
         FadeAtOutroStart,
         FixedFullTrack,
         FixedSkipSilence,
-        FixedStartCenterSkipSilence
+        FixedStartCenterSkipSilence,
+        SmartPhraseAndEQ
     };
 
     AutoDJProcessor(QObject* pParent,
