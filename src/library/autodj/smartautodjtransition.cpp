@@ -106,7 +106,7 @@ double SmartAutoDJTransition::findNearestPhraseBoundary(
         auto nextBeat = pBeats->findNextBeat(currentFrame);
 
         if (prevBeat.isValid() && nextBeat.isValid()) {
-            double beatDuration = (nextBeat - prevBeat).value() / 44100.0;
+            double beatDuration = (nextBeat - prevBeat) / 44100.0;
             if (beatDuration > 0.1 && beatDuration < 2.0) {
                 bpm = 60.0 / beatDuration;
             }
