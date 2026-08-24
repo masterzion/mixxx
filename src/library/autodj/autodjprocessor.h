@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QMap>
 #include <QString>
 #include <memory>
 #include <vector>
@@ -238,6 +239,7 @@ class AutoDJProcessor : public QObject {
     void randomTrackRequested(int tracksToAdd);
 
   private slots:
+    void slotWaveformSummaryLoaded(DeckAttributes* pDeck, TrackPointer pTrack);
     void crossfaderChanged(double value);
     void playerPositionChanged(DeckAttributes* pDeck, double position);
     void playerPlayChanged(DeckAttributes* pDeck, bool playing);
@@ -322,6 +324,7 @@ class AutoDJProcessor : public QObject {
     double m_transitionProgress;
     double m_transitionTime; // the desired value set by the user
     TransitionMode m_transitionMode;
+    QMap<DeckAttributes*, QMetaObject::Connection> m_waveformConnections;
     bool m_crossfaderStartCenter;
 
     PlayerManagerInterface* m_pPlayerManager;

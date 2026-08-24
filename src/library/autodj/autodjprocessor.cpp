@@ -1211,21 +1211,25 @@ double AutoDJProcessor::getFirstSoundSecond(DeckAttributes* pDeck) {
         return 0.0;
     }
 
+    double firstSoundSecond = 0.0;
     CuePointer pFromTrackN60dBSound = pTrack->findCueByType(mixxx::CueType::N60dBSound);
     if (pFromTrackN60dBSound) {
         const mixxx::audio::FramePos firstSound = pFromTrackN60dBSound->getPosition();
         if (firstSound.isValid()) {
             const mixxx::audio::FramePos trackEndPosition = pDeck->trackEndPosition();
             if (firstSound <= trackEndPosition) {
-                return framePositionToSeconds(firstSound, pDeck);
-            } else {
-                qWarning() << "-60 dB Sound Cue starts after track end in:"
-                           << pTrack->getLocation()
-                           << "Using the first sample instead.";
+                firstSoundSecond = framePositionToSeconds(firstSound, pDeck);
             }
         }
     }
-    return 0.0;
+
+    double smartStart = SmartAutoDJTransition::detectRealMusicStartSecond(
+            pTrack, pDeck->sampleRate().value());
+    if (smartStart > 0.0) {
+        return smartStart;
+    }
+
+    return firstSoundSecond;
 }
 
 double AutoDJProcessor::getLastSoundSecond(DeckAttributes* pDeck) {
@@ -1627,6 +1631,18 @@ void AutoDJProcessor::playerTrackLoaded(DeckAttributes* pDeck, TrackPointer pTra
                  << (pTrack ? pTrack->getLocation() : "(null)");
     }
 
+    if (m_waveformConnections.contains(pDeck)) {
+        disconnect(m_waveformConnections[pDeck]);
+        m_waveformConnections.remove(pDeck);
+    }
+
+    if (pTrack) {
+        m_waveformConnections[pDeck] = connect(pTrack.get(), &Track::waveformSummaryUpdated,
+                this, [this, pDeck, pTrack]() {
+                    slotWaveformSummaryLoaded(pDeck, pTrack);
+                });
+    }
+
     pDeck->loading = false;
 
     // Since the end position is measured in seconds from 0:00 it is also
@@ -1909,4 +1925,20 @@ bool AutoDJProcessor::nextTrackLoaded() {
     }
 
     return loadedTrack == getNextTrackFromQueue();
+}
+
+void AutoDJProcessor::slotWaveformSummaryLoaded(DeckAttributes* pDeck, TrackPointer pTrack) {
+    if (m_eState == ADJ_DISABLED || !pDeck || !pTrack) {
+        return;
+    }
+
+    if (!pDeck->isPlaying()) {
+        DeckAttributes* fromDeck = getOtherDeck(pDeck);
+        if (fromDeck) {
+            calculateTransition(fromDeck, pDeck, true);
+            if (pDeck->startPos != kKeepPosition) {
+                pDeck->setPlayPosition(pDeck->startPos);
+            }
+        }
+    }
 }
