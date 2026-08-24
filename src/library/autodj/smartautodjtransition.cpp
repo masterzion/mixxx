@@ -137,7 +137,7 @@ double SmartAutoDJTransition::detectRealMusicStartSecond(
         return pIntroCue->getEndPosition().value() / (effectiveSampleRate * 2.0);
     }
 
-    // 2. Scan the waveform summary (which is compact and fully analyzed)
+    // 2. Retrieve Waveform Data
     ConstWaveformPointer pWaveform = pTrack->getWaveformSummary();
     if (!pWaveform) {
         pWaveform = pTrack->getWaveform();
@@ -154,7 +154,12 @@ double SmartAutoDJTransition::detectRealMusicStartSecond(
     }
     double effectiveSampleRate = (sampleRate > 0.0) ? sampleRate : 44100.0;
 
-    // Find the maximum low (bass) and all (overall) intensity to set a scale
+    // Helper to convert time in seconds to visual sample index
+    auto timeToIndex = [ratio, effectiveSampleRate](double sec) {
+        return static_cast<int>((sec * effectiveSampleRate * 2.0) / ratio);
+    };
+
+    // Calculate maximum intensity across the entire track
     unsigned char maxLow = 0;
     unsigned char maxAll = 0;
     for (int i = 0; i < dataSize; ++i) {
@@ -162,20 +167,55 @@ double SmartAutoDJTransition::detectRealMusicStartSecond(
         maxAll = std::max(maxAll, pWaveform->getAll(i));
     }
 
+    if (maxAll == 0) {
+        return 0.0;
+    }
+
     // Scan the first 45 seconds of the track
-    double scanLimitSeconds = std::min(45.0, (dataSize * ratio) / (effectiveSampleRate * 2.0));
-    int scanLimitIndex = static_cast<int>((scanLimitSeconds * effectiveSampleRate * 2.0) / ratio);
-    scanLimitIndex = std::min(scanLimitIndex, dataSize);
+    int scanLimitIndex = std::min(timeToIndex(45.0), dataSize);
+    int windowSize = std::max(1, timeToIndex(1.5)); // 1.5 seconds window
 
-    // Look for the first index where energy rises significantly.
-    // Threshold: 15% of max low (bass) or 12% of max overall volume.
-    double lowThreshold = maxLow * 0.15;
-    double allThreshold = maxAll * 0.12;
+    double bestStartSecond = 0.0;
+    double maxRatioIncrease = 0.0;
 
+    // Look for a step-increase (buildup / drop transition)
+    for (int i = windowSize; i < scanLimitIndex - windowSize; ++i) {
+        // Calculate average of previous window
+        double prevSum = 0.0;
+        for (int w = -windowSize; w < 0; ++w) {
+            prevSum += pWaveform->getAll(i + w);
+        }
+        double prevAvg = prevSum / windowSize;
+
+        // Calculate average of next window
+        double nextSum = 0.0;
+        for (int w = 0; w < windowSize; ++w) {
+            nextSum += pWaveform->getAll(i + w);
+        }
+        double nextAvg = nextSum / windowSize;
+
+        // We look for a significant volume jump:
+        // 1. Next average must be at least 2.5x higher than previous average
+        // 2. Next average must be at least 20% of the overall maximum intensity of the track
+        if (prevAvg > 1.0) {
+            double ratioIncrease = nextAvg / prevAvg;
+            if (ratioIncrease > maxRatioIncrease && ratioIncrease >= 2.5 && nextAvg >= (maxAll * 0.20)) {
+                maxRatioIncrease = ratioIncrease;
+                bestStartSecond = (i * ratio) / (effectiveSampleRate * 2.0);
+            }
+        }
+    }
+
+    if (bestStartSecond > 0.0) {
+        return bestStartSecond;
+    }
+
+    // Fallback: If no sudden step increase, look for the first point where volume
+    // climbs above 30% of maximum intensity.
+    double absoluteThreshold = maxAll * 0.30;
     for (int i = 0; i < scanLimitIndex; ++i) {
-        if (pWaveform->getLow(i) >= lowThreshold || pWaveform->getAll(i) >= allThreshold) {
-            double seconds = (i * ratio) / (effectiveSampleRate * 2.0);
-            return seconds;
+        if (pWaveform->getAll(i) >= absoluteThreshold) {
+            return (i * ratio) / (effectiveSampleRate * 2.0);
         }
     }
 
