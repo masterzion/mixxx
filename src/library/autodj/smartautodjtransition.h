@@ -49,4 +49,10 @@ class SmartAutoDJTransition {
             double positionSeconds,
             int barsPerPhrase = 16,
             double fallbackBpm = 120.0);
+
+    /// Detects the real start of the music (skipping silence and long ambient intros)
+    /// based on intro cue points, beatgrids, and waveform summaries.
+    static double detectRealMusicStartSecond(
+            const TrackPointer& pTrack,
+            double sampleRate = 44100.0);
 };

@@ -1409,7 +1409,10 @@ void AutoDJProcessor::calculateTransition(DeckAttributes* pFromDeck,
 
         pFromDeck->fadeBeginPos = outroStart;
         pFromDeck->fadeEndPos = outroEnd;
-        pToDeck->startPos = (introStart > 0.0) ? introStart : 0.0;
+        // Use smart waveform-based music start detection to skip intro silence/ambient part
+        double smartStartSeconds = SmartAutoDJTransition::detectRealMusicStartSecond(
+                pToTrack, pToDeck->sampleRate().value());
+        pToDeck->startPos = (smartStartSeconds > 0.0) ? smartStartSeconds : ((introStart > 0.0) ? introStart : 0.0);
     } break;
     case TransitionMode::FullIntroOutro: {
         // Use the outro or intro length for the transition time, whichever is

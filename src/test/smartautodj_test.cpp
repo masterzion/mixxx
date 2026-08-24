@@ -123,4 +123,8 @@ TEST(SmartAutoDJTest, PhraseAlignment) {
     EXPECT_NEAR(0.0, alignedZero, 1e-4);
 }
 
+TEST(SmartAutoDJTest, RealMusicStartNullFallback) {
+    EXPECT_DOUBLE_EQ(0.0, SmartAutoDJTransition::detectRealMusicStartSecond(nullptr));
+}
+
 } // namespace

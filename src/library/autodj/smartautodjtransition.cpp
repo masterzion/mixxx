@@ -1,4 +1,6 @@
 #include "library/autodj/smartautodjtransition.h"
+#include "track/track.h"
+
 
 #include <algorithm>
 #include <cmath>
@@ -118,4 +120,64 @@ double SmartAutoDJTransition::findNearestPhraseBoundary(
 
     double phraseIndex = std::round(positionSeconds / secondsPerPhrase);
     return std::max(0.0, phraseIndex * secondsPerPhrase);
+}
+
+double SmartAutoDJTransition::detectRealMusicStartSecond(
+        const TrackPointer& pTrack,
+        double sampleRate) {
+    if (!pTrack) {
+        return 0.0;
+    }
+
+    // 1. Check if there is an explicit Intro End marker.
+    // If the user has set the Intro End, use it as the definitive music start.
+    CuePointer pIntroCue = pTrack->findCueByType(mixxx::CueType::Intro);
+    if (pIntroCue && pIntroCue->getEndPosition().isValid()) {
+        double effectiveSampleRate = (sampleRate > 0.0) ? sampleRate : 44100.0;
+        return pIntroCue->getEndPosition().value() / (effectiveSampleRate * 2.0);
+    }
+
+    // 2. Scan the waveform summary (which is compact and fully analyzed)
+    ConstWaveformPointer pWaveform = pTrack->getWaveformSummary();
+    if (!pWaveform) {
+        pWaveform = pTrack->getWaveform();
+    }
+
+    if (!pWaveform || pWaveform->getDataSize() <= 0) {
+        return 0.0;
+    }
+
+    int dataSize = pWaveform->getDataSize();
+    double ratio = pWaveform->getAudioVisualRatio();
+    if (ratio <= 0.0) {
+        ratio = 1024.0;
+    }
+    double effectiveSampleRate = (sampleRate > 0.0) ? sampleRate : 44100.0;
+
+    // Find the maximum low (bass) and all (overall) intensity to set a scale
+    unsigned char maxLow = 0;
+    unsigned char maxAll = 0;
+    for (int i = 0; i < dataSize; ++i) {
+        maxLow = std::max(maxLow, pWaveform->getLow(i));
+        maxAll = std::max(maxAll, pWaveform->getAll(i));
+    }
+
+    // Scan the first 45 seconds of the track
+    double scanLimitSeconds = std::min(45.0, (dataSize * ratio) / (effectiveSampleRate * 2.0));
+    int scanLimitIndex = static_cast<int>((scanLimitSeconds * effectiveSampleRate * 2.0) / ratio);
+    scanLimitIndex = std::min(scanLimitIndex, dataSize);
+
+    // Look for the first index where energy rises significantly.
+    // Threshold: 15% of max low (bass) or 12% of max overall volume.
+    double lowThreshold = maxLow * 0.15;
+    double allThreshold = maxAll * 0.12;
+
+    for (int i = 0; i < scanLimitIndex; ++i) {
+        if (pWaveform->getLow(i) >= lowThreshold || pWaveform->getAll(i) >= allThreshold) {
+            double seconds = (i * ratio) / (effectiveSampleRate * 2.0);
+            return seconds;
+        }
+    }
+
+    return 0.0;
 }
