@@ -199,7 +199,7 @@ double SmartAutoDJTransition::detectRealMusicStartSecond(
         // 2. Next average must be at least 20% of the overall maximum intensity of the track
         if (prevAvg > 1.0) {
             double ratioIncrease = nextAvg / prevAvg;
-            if (ratioIncrease > maxRatioIncrease && ratioIncrease >= 2.5 && nextAvg >= (maxAll * 0.20)) {
+            if (ratioIncrease > maxRatioIncrease && ratioIncrease >= 2.5 && nextAvg >= (maxAll * 0.40)) {
                 maxRatioIncrease = ratioIncrease;
                 bestStartSecond = (i * ratio) / (effectiveSampleRate * 2.0);
             }
@@ -211,8 +211,8 @@ double SmartAutoDJTransition::detectRealMusicStartSecond(
     }
 
     // Fallback: If no sudden step increase, look for the first point where volume
-    // climbs above 30% of maximum intensity.
-    double absoluteThreshold = maxAll * 0.30;
+    // climbs above 40% of maximum intensity.
+    double absoluteThreshold = maxAll * 0.40;
     for (int i = 0; i < scanLimitIndex; ++i) {
         if (pWaveform->getAll(i) >= absoluteThreshold) {
             return (i * ratio) / (effectiveSampleRate * 2.0);
